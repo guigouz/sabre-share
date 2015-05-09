@@ -2,7 +2,7 @@
 namespace SabreShare\CalDAV\Backend;
 use Sabre\CalDAV\Backend as SabreBackend;
 
-class SabreSharePDO extends SabreBackend\PDO implements SabreBackend\SharingSupport
+class SabreSharePDO extends \Sabre\CalDAV\Backend\PDO implements SabreBackend\SharingSupport
 {
 	/**
 	 * The table name that will be used for calendar shares
@@ -206,7 +206,7 @@ class SabreSharePDO extends SabreBackend\PDO implements SabreBackend\SharingSupp
 		$fields = array_values($this->propertyMap);
 		$fields[] = 'id';
 		$fields[] = 'uri';
-		$fields[] = 'ctag';
+		$fields[] = 'synctoken';
 		$fields[] = 'components';
 		$fields[] = 'principaluri';
 		$fields[] = 'transparent';
@@ -228,7 +228,8 @@ class SabreSharePDO extends SabreBackend\PDO implements SabreBackend\SharingSupp
 					'id' => $row['id'],
 					'uri' => $row['uri'],
 					'principaluri' => $row['principaluri'],
-					'{' . \Sabre\CalDAV\Plugin::NS_CALENDARSERVER . '}getctag' => $row['ctag']?$row['ctag']:'0',
+					'{' . \Sabre\CalDAV\Plugin::NS_CALENDARSERVER . '}getctag' => 'http://sabre.io/ns/sync/' . ($row['synctoken']?$row['synctoken']:'0'),
+					'{http://sabredav.org/ns}sync-token' => $row['synctoken']?$row['synctoken']:'0',
 					'{' . \Sabre\CalDAV\Plugin::NS_CALDAV . '}supported-calendar-component-set' => new \Sabre\CalDAV\Property\SupportedCalendarComponentSet($components),
 					'{' . \Sabre\CalDAV\Plugin::NS_CALDAV . '}schedule-calendar-transp' => new \Sabre\CalDAV\Property\ScheduleCalendarTransp($row['transparent']?'transparent':'opaque'),
 			);
@@ -243,6 +244,7 @@ class SabreSharePDO extends SabreBackend\PDO implements SabreBackend\SharingSupp
 		}
 		
 		// now let's get any shared calendars
+		// TODO review - can't we just use a join on the query above ?
 		$shareFields = implode(', ', $this->sharesProperties);
 		
 		// get the principal id
@@ -267,7 +269,8 @@ class SabreSharePDO extends SabreBackend\PDO implements SabreBackend\SharingSupp
 						'id' => $calendarShareRow['id'],
 						'uri' => $calendarShareRow['uri'],
 						'principaluri' => $principalUri,
-						'{' . \Sabre\CalDAV\Plugin::NS_CALENDARSERVER . '}getctag' => $calendarShareRow['ctag']?$calendarShareRow['ctag']:'0',
+						'{' . \Sabre\CalDAV\Plugin::NS_CALENDARSERVER . '}getctag' => 'http://sabre.io/ns/sync/' . ($calendarShareRow['synctoken']?$calendarShareRow['synctoken']:'0'),
+						'{http://sabredav.org/ns}sync-token' => $row['synctoken']?$row['synctoken']:'0',
 						'{' . \Sabre\CalDAV\Plugin::NS_CALDAV . '}supported-calendar-component-set' => new \Sabre\CalDAV\Property\SupportedCalendarComponentSet($shareComponents),
 						'{' . \Sabre\CalDAV\Plugin::NS_CALDAV . '}schedule-calendar-transp' => new \Sabre\CalDAV\Property\ScheduleCalendarTransp($calendarShareRow['transparent']?'transparent':'opaque'),
 				);
