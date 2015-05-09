@@ -15,9 +15,8 @@
         "source" : "https://github.com/musonic/sabre-share"
     },
     "require": {
-        "sabre/dav": "1.8.*",
+        "sabre/dav": "2.1.*",
         "php": ">=5.3.1",
-        "sabre/vobject" : "2.0.*",
         "ext-dom": "*",
         "ext-pcre": "*",
         "ext-spl": "*",
