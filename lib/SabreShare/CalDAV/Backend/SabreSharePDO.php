@@ -202,98 +202,61 @@ class SabreSharePDO extends \Sabre\CalDAV\Backend\PDO implements SabreBackend\Sh
 	 * @return array
 	 */
 	public function getCalendarsForUser($principalUri) {
-	
-		$fields = array_values($this->propertyMap);
-		$fields[] = 'id';
-		$fields[] = 'uri';
-		$fields[] = 'synctoken';
-		$fields[] = 'components';
-		$fields[] = 'principaluri';
-		$fields[] = 'transparent';
-	
-		// Making fields a comma-delimited list
-		$fields_list = implode(', ', $fields);
-		$stmt = $this->pdo->prepare("SELECT " . $fields_list . " FROM ".$this->calendarTableName." WHERE principaluri = ? ORDER BY calendarorder ASC");
-		$stmt->execute(array($principalUri));
-	
-		$calendars = array();
-		while($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
-	
-			$components = array();
-			if ($row['components']) {
-				$components = explode(',',$row['components']);
-			}
-	
-			$calendar = array(
-					'id' => $row['id'],
-					'uri' => $row['uri'],
-					'principaluri' => $row['principaluri'],
-					'{' . \Sabre\CalDAV\Plugin::NS_CALENDARSERVER . '}getctag' => 'http://sabre.io/ns/sync/' . ($row['synctoken']?$row['synctoken']:'0'),
-					'{http://sabredav.org/ns}sync-token' => $row['synctoken']?$row['synctoken']:'0',
-					'{' . \Sabre\CalDAV\Plugin::NS_CALDAV . '}supported-calendar-component-set' => new \Sabre\CalDAV\Property\SupportedCalendarComponentSet($components),
-					'{' . \Sabre\CalDAV\Plugin::NS_CALDAV . '}schedule-calendar-transp' => new \Sabre\CalDAV\Property\ScheduleCalendarTransp($row['transparent']?'transparent':'opaque'),
-			);
-	
-	
-			foreach($this->propertyMap as $xmlName=>$dbName) {
-				$calendar[$xmlName] = $row[$dbName];
-			}
-	
-			$calendars[] = $calendar;
-	
-		}
-		
+
+        $calendars = parent::getCalendarsForUser($principalUri);
+
 		// now let's get any shared calendars
-		// TODO review - can't we just use a join on the query above ?
 		$shareFields = implode(', ', $this->sharesProperties);
 		
 		// get the principal id
 		$principalBackend = $this->getPrincipalBackend();
 		$principal = $principalBackend->getPrincipalByPath($principalUri);
-		
-		$shareStmt = $this->pdo->prepare("SELECT ". $shareFields . " FROM ".$this->calendarSharesTableName." WHERE member = ?");
-		$shareStmt->execute(array($principal['id']));
-		while($shareRow = $shareStmt->fetch(\PDO::FETCH_ASSOC)) {
-			// get the original calendar
-			$calStmt = $this->pdo->prepare("SELECT " . $fields_list . " FROM ".$this->calendarTableName." WHERE id = ? ORDER BY calendarorder ASC LIMIT 1");
-			$calStmt->execute(array($shareRow['calendarId']));
-			
-			while($calendarShareRow = $calStmt->fetch(\PDO::FETCH_ASSOC)) {
-				
-				$shareComponents = array();
-				if ($calendarShareRow['components']) {
-					$shareComponents = explode(',',$calendarShareRow['components']);
-				}
-				
-				$sharedCalendar = array(
-						'id' => $calendarShareRow['id'],
-						'uri' => $calendarShareRow['uri'],
-						'principaluri' => $principalUri,
-						'{' . \Sabre\CalDAV\Plugin::NS_CALENDARSERVER . '}getctag' => 'http://sabre.io/ns/sync/' . ($calendarShareRow['synctoken']?$calendarShareRow['synctoken']:'0'),
-						'{http://sabredav.org/ns}sync-token' => $row['synctoken']?$row['synctoken']:'0',
-						'{' . \Sabre\CalDAV\Plugin::NS_CALDAV . '}supported-calendar-component-set' => new \Sabre\CalDAV\Property\SupportedCalendarComponentSet($shareComponents),
-						'{' . \Sabre\CalDAV\Plugin::NS_CALDAV . '}schedule-calendar-transp' => new \Sabre\CalDAV\Property\ScheduleCalendarTransp($calendarShareRow['transparent']?'transparent':'opaque'),
-				);
-				// some specific properies for shared calendars
-				$sharedCalendar['{http://calendarserver.org/ns/}shared-url'] = $calendarShareRow['uri'];
-				$sharedCalendar['{http://sabredav.org/ns}owner-principal'] = $calendarShareRow['principaluri'];
-				$sharedCalendar['{http://sabredav.org/ns}read-only'] = $shareRow['readOnly'];
-				$sharedCalendar['{http://calendarserver.org/ns/}summary'] = $shareRow['summary'];
-				
-				foreach($this->propertyMap as $xmlName=>$dbName) {
-					
+
+        $shareStmt = $this->pdo->prepare("SELECT
+            calendar.id, calendar.uri, calendar.displayname, calendar.description, calendar.timezone, calendar.calendarorder, calendar.calendarcolor, calendar.principaluri, calendar.synctoken, calendar.components, calendar.transparent, shares.readonly, shares.summary FROM {$this->calendarSharesTableName} shares
+            inner join {$this->calendarTableName} calendar on shares.calendarId = calendar.id
+            where shares.member = ?
+            order by calendar.calendarorder asc");
+
+        $shareStmt->execute(array($principal['id']));
+
+        while($calendarShareRow = $shareStmt->fetch(\PDO::FETCH_ASSOC)) {
+			$shareComponents = array();
+			if ($calendarShareRow['components']) {
+				$shareComponents = explode(',',$calendarShareRow['components']);
+			}
+
+            $uri = basename($calendarShareRow['principaluri']).':'.$calendarShareRow['uri'];
+			$sharedCalendar = array(
+					'id' => $calendarShareRow['id'],
+					'uri' => $uri,
+					'principaluri' => $principalUri,
+					'{' . \Sabre\CalDAV\Plugin::NS_CALENDARSERVER . '}getctag' => 'http://sabre.io/ns/sync/' . ($calendarShareRow['synctoken']?$calendarShareRow['synctoken']:'0'),
+					'{http://sabredav.org/ns}sync-token' => $calendarShareRow['synctoken']?$calendarShareRow['synctoken']:'0',
+					'{' . \Sabre\CalDAV\Plugin::NS_CALDAV . '}supported-calendar-component-set' => new \Sabre\CalDAV\Property\SupportedCalendarComponentSet($shareComponents),
+					'{' . \Sabre\CalDAV\Plugin::NS_CALDAV . '}schedule-calendar-transp' => new \Sabre\CalDAV\Property\ScheduleCalendarTransp($calendarShareRow['transparent']?'transparent':'opaque'),
+			);
+
+			// some specific properies for shared calendars
+			$sharedCalendar['{http://calendarserver.org/ns/}shared-url'] = 'calendars/'.basename($calendarShareRow['principaluri']).'/'.$uri;
+			$sharedCalendar['{http://sabredav.org/ns}owner-principal'] = $calendarShareRow['principaluri'];
+			$sharedCalendar['{http://sabredav.org/ns}read-only'] = $calendarShareRow['readonly'];
+			$sharedCalendar['{http://calendarserver.org/ns/}summary'] = $calendarShareRow['summary'];
+
+            foreach($this->propertyMap as $xmlName=>$dbName) {
+
 // 					if($xmlName == '{DAV:}displayname') { 
 // 						$sharedCalendar[$xmlName] = $shareRow['displayname'] == null ? $calendarShareRow['displayName'] : $shareRow['displayname'];
 // 					} elseif($xmlName == '{http://apple.com/ns/ical/}calendar-color') {
 // 						$sharedCalendar[$xmlName] = $shareRow['colour'] == null ? $calendarShareRow['calendarcolor'] : $shareRow['colour'];
 // 					} else {
-						$sharedCalendar[$xmlName] = $calendarShareRow[$dbName];
+                $sharedCalendar[$xmlName] = $calendarShareRow[$dbName];
 // 					}
-				}
+            }
+
+            $calendars[] = $sharedCalendar;
 				
-				$calendars[] = $sharedCalendar;
-				
-			}
+
 		}
 		
 		return $calendars;
